@@ -1,0 +1,68 @@
+
+U10: $88
+A0-4:  switch strobe ST0-4 (NH)
+A5-7: dip switch 1-3 strobe (NH)
+A0-3: lamp address
+	selects lamps 0-14 for each of the four lamp chips
+	all high (15) for no lamp
+A4-7: lamp data
+	low to enable any of the four lamp chips
+A0-3: display 1-4 latch,  nored with CA2 J1-(20-24)
+	bcd enabled when high
+A4-7: display data
+CA1: self test switch input (low = pressed?)
+CA2: nored with display latch: display blanking/enable (low -> high blanking)
+	bcd blank when blanking high (signal low)
+CB1: zero crossing input (NL)
+CB2: dip switch 4 strobe (NH), lamp strobe 1 
+	latches data for first lamp board on down signal
+B0-7: switch return I0-I7
+
+U11: $90
+A0: display 5 (credit?) latch, nored with U10-CA2
+A1: 'sound module address enable'? J1-7
+A2-7: display digit enable #6-#1 (100k-1) J1-(6-1)
+	high = enable?
+B0-3: solenoid/sound data A-D
+	0-14 turns on that solenoid
+	15 all solenoids off
+	(only one solenoid can be on at a time!)
+B4-7: 'continuous sound data' A4J4-(5-8) -> A3J4-[11,9,8,10]
+	low=enable
+	B4: A3J4-11: Cont 2 
+	B5: A3J4- 9: Cont 4 coin door lock out
+	B6: A3J4- 8: Cont 1 flipper disable (high=enable flippers?)
+	B7: A3J4-10: Cont 3 
+CA1: display interrupt input (NH)
+CA2: LED (high turns on), lamp strobe 2
+CB1: n/u?
+CB2: solenoid (low) or sound (high) select
+
+
+5101: $200
+
+IO:
+keep CA2 (display blanking) high except when doing display update
+keep CB2 (lamp strobe) low, strobe when lamp data ready
+otherwise, doing switch matrix (worth trying to use these together?)
+
+
+U10
+A:
+control: |self test irq|n/u|1|1|!blanking 0|D|0|1|
+direction: out 1
+data: 11110000
+B:
+control: |zero crossing irq|n/u|1|1|lamp strobe 1|D|1|1|
+direction: in 0
+
+U11
+A:
+control: |display irq|n/u|1|1|led 0|D|0|1|
+direction: out
+data: 000000?0
+B:
+control: |n/u|n/u|1|1|solenoid0|D|0|0|
+direction: out
+data: 10011111
+

@@ -1,0 +1,5 @@
+*.lst
+*.sym
+pinmame*/*
+*.pdf
+PIA.png
