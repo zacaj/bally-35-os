@@ -18,3 +18,7 @@ RAM:			.equ $0000
 cRAM:			.equ $0200
 
 counter:		.equ $0000
+
+lamp1:			.equ cRAM + $00
+lamp16:			.equ lamp1 + 15
+
