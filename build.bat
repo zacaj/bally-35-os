@@ -1,2 +1,2 @@
-tasmx -68 -s -b test.asm rom.764
+tasmx -68 -s -b test.asm rom
 split.exe

@@ -7,15 +7,16 @@ void write(FILE *in, FILE *out) {
 }
 
 int main() {
-	FILE *in  = fopen("rom.764", "rb");
+	FILE *in  = fopen("rom", "rb");
 	if(!in) {
-		fprintf(stderr, "could not open rom.764, errno %i", (errno));
+		fprintf(stderr, "could not open rom, errno %i", (errno));
 		return 3;
 	}
-	FILE *a = fopen("pinmame32_23/roms/eightbll/723-20_2.716", "wb");
+	FILE *a = fopen("pinmame32_23/roms/dracula/cpu_u2.716", "wb");
 	FILE *aa = fopen("u2.716", "wb");
-	FILE *b = fopen("pinmame32_23/roms/eightbll/720-20_6.716", "wb");
+	FILE *b = fopen("pinmame32_23/roms/dracula/cpu_u6.716", "wb");
 	FILE *bb = fopen("u6.716", "wb");
+	FILE *c = fopen("rom.764", "wb");
 	fseek(in, 0x0000, SEEK_SET);
 	write(in, a);
 	fseek(in, 0x0000, SEEK_SET);
@@ -25,6 +26,13 @@ int main() {
 	write(in, b);
 	fseek(in, 2048, SEEK_SET);
 	write(in, bb);
+
+	fseek(in, 0x0000, SEEK_SET);
+	write(in, c);
+	write(in, c);
+	fseek(in, 0x0000, SEEK_SET);
+	write(in, c);
+	write(in, c);
 	
 	fseek(in, 0x0000, SEEK_END);
 	if(ftell(in)!=4096) {
@@ -33,6 +41,7 @@ int main() {
 	}
 	fclose(a);
 	fclose(b);
+	fclose(c);
 	fclose(in);
 	return 0;
 }
