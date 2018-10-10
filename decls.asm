@@ -24,6 +24,7 @@ counter:		.equ $0000
 curDispDigitX:		.equ $0001 ; +  points to disp1_100k -> 1
 curDispDigitBit:	.equ $0003 ; bit 2 thru 7, shifted left 
 dU10ABackup:		.equ $0004 ; store bank in case display irq interrupts zero irq
+lU10ABackup:		.equ $000A
 
 lamp1:			.equ cRAM + $00 ; upper nibble is state of 4 lamps in this col
 lamp16:			.equ lamp1 + 15

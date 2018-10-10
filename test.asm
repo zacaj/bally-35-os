@@ -10,6 +10,21 @@
 	
 .org $1800	; start of 
 main:	
+	seI
+	ldS	$7F
+	ldX	$55F0
+lWait:	
+	deX
+	bne	lWait
+
+	ldX	cRAM
+	ldaA	$0F
+lClearCRam:
+	staA	0,X
+	inX
+	cpX	cRAM+$ff
+	bne	lClearCRam
+	
 setupPias:
 	; setup U10A
 	ldaA	00111001b	; irq state | n/u | CA2 output | ...mode | CA2 value 1 = don't blank displays | enable direction register | irq on | ...self test ->low
@@ -23,7 +38,7 @@ setupPias:
 	staA	u10A		; 0-3 set all display latches low, 4-7 blank disp data
 	
 	; setup U10B
-	ldaA	00111011b	; " | " | " | " | CB2 value 1 = ready for lamp strobe | " | irq when | ...zero crossing ->high
+	ldaA	00110011b	; " | " | " | " | CB2 value 0 = ready for lamp strobe | " | irq when | ...zero crossing ->high
 	staA	u10BControl
 	ldaA	00000000b	; all inputs
 	staA	u10B
@@ -53,18 +68,13 @@ setupPias:
 	ldaA	10011111b	; 0-3 = solenoid number to fire, 1111 = 15 = none
 	staA	u11B		; 4-7 = continuous solenoids
 	
-	ldX	cRAM
-	ldaA	$0F
-lClearCRam:
-	staA	0,X
-	inX
-	cpX	cRAM+$ff
-	bne	lClearCRam
+	
 	
 initRam:
 	clr 	counter
 	clr 	5
 	clr 	6
+	clr $F
 	ldaA	$FF
 	;staA	lamp1+0
 	;staA	lamp1+7
@@ -74,19 +84,20 @@ initRam:
 	ldaA	10000b
 	staA	9
 
-	ldaA	$30
+	ldaA	$0F
 	ldX	disp1_100k
 lTestDisp:
 	staA	0,X
-	addA	0,X
+	addA	$10
+	andA	01111111b
 	inX
-	cpX	disp2_1 + 1
+	cpX	disp5_1 + 1
 	bne	lTestDisp
 	
 	ldX	disp1_100k
 	stX	curDispDigitX
 	
-	ldaA	00000100b
+	ldaA	~11111011b
 	staA	curDispDigitBit
 	;clra
 	;staa	sound+1
@@ -137,14 +148,167 @@ interrupt:
 		nop
 	endif
 	
+	ldaB	>u11AControl
+	staB	$C
+	ldaA	>u10BControl ; IRQ status bit
+	staA	$D
+
+	
+	
 	ldaA	10000000b ; IRQ status bit
-	bitA	>u10BControl
+	bitA	>$C
+ 	ifeq 	; display irq
+	 	jmp	afterDispIrq
+	endif
+
+		; disable decoders
+		ldaA	$FF
+		staA	lampData
+		;ldaA	>u10BControl
+		;pshA
+		; latch addr into lamp board
+		ldaA	00001000b	
+		oraA	>u10BControl
+		staA	u10BControl
+		andA	~00001000b
+		staA	u10BControl
+		
+
+ 		; backup u10A bank
+ 		ldaA	>displayData
+ 		staA	dU10ABackup
+
+ 		; blank displays
+ 		ldaB	~00001000b ; turn off CA2 bit
+ 		andB	>u10AControl
+ 		staB	u10AControl
+
+		ldaB	>displayDigits
+		andB	11b
+		oraB	1b ; make sure credit display isn't reading disp data
+		staB	 
+
+		ldaA	$0F
+		staA	displayData
+	
+ 		
+ 		;ldaA	1b ; 5th disp bit
+ 		;oraA	>u11A
+ 		;staA	u11A
+	
+ 		ldX	>curDispDigitX 	; get current disp digit addr
+	
+	
+ 		; select first display
+		ldaA	0, X
+		oraA	00001111b
+ 		andA	11111110b
+ 		staA	displayData	
+ 		;nop
+ 		;nop
+ 		oraA	00001111b	; disable first display
+ 		staA	displayData
+	
+ 		; select second
+		ldaA	6, X
+		oraA	00001111b
+ 		andA	11111101b
+ 		staA	displayData		; disable second 
+ 		;nop
+ 		;nop
+ 		oraA	00001111b
+ 		staA	displayData
+	
+ 		; select third
+ 		ldaA	12, X
+		oraA	00001111b
+ 		andA	11111011b
+ 		staA	displayData	; disable third 
+ 		;nop
+ 		;nop
+ 		oraA	00001111b
+ 		staA	displayData
+	
+ 		; select fourth
+ 		ldaA	18, X
+		oraA	00001111b
+ 		andA	11110111b
+ 		staA	displayData
+ 		;nop
+ 		;nop
+ 		oraA	00001111b	; disable third 
+ 		staA	displayData
+	
+ 		; select fifth (credit)
+ 		ldaA	24, X		; get digit
+		oraA	00001111b
+ 		staA	displayData	; send to display (not listening yet)
+ 		ldaA	11111110b ; ~5th disp bit
+ 		andA	>u11A
+ 		staA	u11A		; enable 5th disp
+ 		;nop
+ 		;nop
+ 		; stop 5th from reading
+ 		;ldaA	1b ; 5th disp bit
+ 		;oraA	>u11A
+ 		;staA	u11A	
+	
+	
+ 		; enable proper digit
+ 		ldaB	>curDispDigitBit
+		andB	11111101b
+		oraB	1b
+ 		staB	displayDigits
+	
+	
+ 		; stop blanking displays (digit now displayed)
+ 		ldaA	00001000b ; turn on CA2 bit
+ 		oraA	>u10AControl
+ 		staA	u10AControl
+	
+	
+ 		; advance to next digit for next irq
+ 		clC	; want to shift 0s into curDispDigitBit
+ 		rol	curDispDigitBit
+		cpX	disp1_1
+ 		ifeq	; reset if reached last digit
+ 			ldaA	~11111011b
+ 			staA	curDispDigitBit
+ 			ldX	disp1_100k
+ 		else
+ 			inX
+ 		endif
+ 		stX	curDispDigitX
+	
+	
+ 		; restore u10A bank
+ 		ldaA	>dU10ABackup
+ 		staA	displayData
+		;pulA
+		;staA	u10BControl
+afterDispIrq:
+
+	ldaA	>$D
+	bitA	10000000b
 	ifeq	; zero crossing
+		jmp	afterZeroCrossing
+	endif
+	tst	>$F
+	ifne	; zero crossing
 		jmp	afterZeroCrossing
 	endif
 
 StrobeLamps:
+		ldaA	>u10BControl
+		staA	$B
+		ldaA	00110000b
+		staA	u10BControl
 
+		ldaA	>lampData
+		staA	lU10ABackup
+
+		inc	$F
+		clI
 		;; reset latch 
 		;ldaA	00001000b	
 		;oraA	>u10BControl	
@@ -153,15 +317,15 @@ StrobeLamps:
 		;ldaA	$FF
 		;staA	lampData
 ;
-		ldaA	11110111b	
-		andA	>u10BControl
-		staA	u10BControl
+		;ldaA	11110111b	
+		;andA	>u10BControl
+		;staA	u10BControl
 
 
-		ldaB	33
-lStrobeWait:	
-		decB
-		bne	lStrobeWait
+		;ldaB	2
+lStrobeWait:	;
+		;decB
+		;bne	lStrobeWait
 
 		; note, counts from F -> 0 instead of 0 -> F since it gets inverted later
 		ldaB	11111111b ; lower half is light addr (0-15), upper half will be ANDed with data
@@ -176,20 +340,20 @@ lStrobeLamps:
 		tBA
 		comA
 		oraA	$F0
+		seI
 		staA	lampData
 
 		; latch addr into lamp board
-		ldaA	00001000b	
-		oraA	>u10BControl
+		ldaA	00111000b	
 		staA	u10BControl
-		andA	~00001000b
+		ldaA	00110000b
 		staA	u10BControl
 
 		; turn on outputs
 		ldaA	0, X		; combine data for this addr w/ addr
 		comA
 		staA	lampData	; send to lamp board
-		
+		clI
 		
 		; inc to next addr
 		decB			
@@ -216,27 +380,40 @@ lStrobeLamps:
 		ldX	>5
 		inX
 		; reset latch 
-		ldaA	00001000b	
-		oraA	>u10BControl	
+		;ldaA	00001000b	
+		;oraA	>u10BControl	
+		;staA	u10BControl
+;
+		;ldaA	>lU10ABackup
+		;staA	lampData
+		seI
+		clr	$F
+		ldaA	>lU10ABackup
+		staA	lampData
+		ldaA	>$B
 		staA	u10BControl
+		;clI
+
+
+
 		cpX	300
 		ifeq	; counter wrapped
 			ldX	0
 			stX	5
-			ldaA	00001000b	; led bit
-			bitA	>u11AControl
-			ifne	; led on?
-				; turn led off
-				ldaA	11110111b	
-				andA	>u11AControl
-				staA	u11AControl
-				ldaA	10100000b
-			else
-				; turn led on
-				oraA	>u11AControl	
-				staA	u11AControl
-				ldaA	01000000b
-			endif
+			;ldaA	00001000b	; led bit
+			;bitA	>u11AControl
+			;ifne	; led on?
+			;	; turn led off
+			;	ldaA	11110111b	
+			;	andA	>u11AControl
+			;	staA	u11AControl
+			;	ldaA	10100000b
+			;else
+			;	; turn led on
+			;	oraA	>u11AControl	
+			;	staA	u11AControl
+			;	ldaA	01000000b
+			;endif
 
 			ldX	cRAM
 			ldaA	$0F
@@ -266,113 +443,21 @@ lClearLamp:
 		else
 			stX	5
 		endif	
+	;jmp afterDispIrq
 afterZeroCrossing:
-	
-	ldaA	10000000b ; IRQ status bit
-	bitA	>u11AControl
- ;	ifne 	; display irq
- ;		; backup u10A bank
- ;		ldaA	>displayData
- ;		staA	dU10ABackup
- ;		
- ;		; make sure credit display isn't reading disp data
- ;		ldaA	1b ; 5th disp bit
- ;		oraA	>u11A
- ;		staA	u11A
- ;		
- ;		; blank displays
- ;		ldaB	~00001000b ; turn off CA2 bit
- ;		andB	>u10AControl
- ;		staB	u10AControl
- ;		
- ;		ldX	>curDispDigitX 	; get current disp digit addr
- ;		
- ;		
- ;		; select first display
- ;		ldaA	11111110b		
- ;		andA	0, X
- ;		staA	displayData	
- ;		nop
- ;		nop
- ;		oraA	00001111b	; disable first display
- ;		staA	displayData
- ;		
- ;		; select second
- ;		ldaA	11111101b
- ;		andA	6, X
- ;		staA	displayData	; disable second 
- ;		nop
- ;		nop
- ;		oraA	00001111b
- ;		staA	displayData
- ;		
- ;		; select third
- ;		ldaA	11111011b
- ;		andA	12, X
- ;		staA	displayData	; disable third 
- ;		nop
- ;		nop
- ;		oraA	00001111b
- ;		staA	displayData
- ;		
- ;		; select fourth
- ;		ldaA	11110111b
- ;		andA	18, X
- ;		staA	displayData
- ;		nop
- ;		nop
- ;		oraA	00001111b	; disable third 
- ;		staA	displayData
- ;		
- ;		; select fifth (credit)
- ;		ldaA	24, X		; get digit
- ;		staA	displayData	; send to display (not listening yet)
- ;		ldaA	11111110b ; ~5th disp bit
- ;		andA	>u11A
- ;		staA	u11A		; enable 5th disp
- ;		nop
- ;		nop
- ;		; stop 5th from reading
- ;		ldaA	1b ; 5th disp bit
- ;		oraA	>u11A
- ;		staA	u11A	
- ;		
- ;		
- ;		; enable proper digit
- ;		ldaB	>curDispDigitBit
- ;		staB	displayDigits
- ;		
- ;		; stop blanking displays (digit now displayed)
- ;		ldaA	00001000b ; turn on CA2 bit
- ;		oraA	>u10AControl
- ;		staA	u10AControl
- ;		
- ;		
- ;		; advance to next digit for next irq
- ;		clC	; want to shift 1s into curDispDigitBit since it's inverted
- ;		rol	curDispDigitBit
- ;		ifeq	; reset if reached last digit
- ;			ldaA	00000100b
- ;			staA	curDispDigitBit
- ;			ldX	disp1_100k
- ;		else
- ;			inX
- ;		endif
- ;		stX	curDispDigitX
- ;		
- ;		
- ;		; restore u10A bank
- ;		ldaA	>dU10ABackup
- ;		staA	displayData
- ;	endif
+
+
 	rti
 afterInterrupt:
+buttonIrq:
+swIrq:
+	rti
 
 pointers: 	.org $1FFF - 7 	
 	.msfirst
 	.dw interrupt			
-	.dw interrupt			
-	.dw interrupt			
+	.dw swIrq			
+	.dw buttonIrq			
 	.dw main
 	
 	
